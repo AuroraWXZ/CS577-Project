@@ -8,6 +8,9 @@ import torch.nn.functional as F
 import pandas as pd
 import numpy as np
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+np.random.seed(577)
+
 def label_encode(df, cols):
     feature_mappings = {}
     df_feature = pd.DataFrame()
@@ -31,6 +34,50 @@ def label_encode(df, cols):
         df_feature[column] = encoded_labels
 
     return feature_mappings, df_feature
+
+def train_embedding(df, feature_cols, label_cols):
+    data = {}
+    encoded_data = pd.DataFrame()
+    data, encoded_data = label_encode(df, feature_cols)
+
+    labels = {}
+    encoded_labels = pd.DataFrame()
+    labels, encoded_labels = label_encode(df, label_cols)
+
+    for column in label_cols:
+        encoded_data[column] = encoded_labels[column]
+
+    return encoded_data, data, labels
+
+def test_embedding(df, features, labels):
+    new_data = pd.DataFrame()
+    for column in features.keys():
+        encoded_labels = []
+        for value in df[column]:
+            if features[column].get(value) is not None:
+                encoded_labels.append(features[column][value])
+            else:
+                features[column][value] = len(features[column])+1
+                encoded_labels.append(features[column][value])
+            # print(value)
+            # print(features[column])
+        new_data[column] = encoded_labels
+
+    for column in labels.keys():
+        encoded_labels = []
+        for value in df[column]:
+            if labels[column].get(value) is not None:
+                encoded_labels.append(labels[column][value])
+            else:
+                labels[column][value] = len(labels[column])+1
+                encoded_labels.append(labels[column][value])
+            # print(value)
+            # print(labels[column])
+        new_data[column] = encoded_labels
+
+    return new_data
+                    
+
     
 # Custom Dataset class
 class TrafficDataset(Dataset):
@@ -43,80 +90,79 @@ class TrafficDataset(Dataset):
         """
         self.features = df[feature_cols]
         self.labels = df[label_cols]
-
-        # print(encoded_df)
-
-        # # One-hot encode the features and labels
-        # self.features = pd.get_dummies(df[feature_cols], columns=feature_cols).values
-        # # print(self.features)
-        # self.labels = pd.get_dummies(df[label_cols], columns=label_cols).values
-        
-        # # Convert to torch tensors
-        # self.features = torch.tensor(self.features, dtype=torch.float32)
-        # self.labels = torch.tensor(self.labels, dtype=torch.float32)
     
     def __len__(self):
         return len(self.features)
     
     def __getitem__(self, idx):
-        return self.features[idx], self.labels[idx]
+        feature = torch.tensor(self.features.iloc[idx].values, dtype=torch.float)
+        label = torch.tensor(self.labels.iloc[idx].values, dtype=torch.float)
+
+        # print(feature)
+        return feature, label
 
 
 
 class TrafficCNN(nn.Module):
     def __init__(self, num_features, num_classes):
         super(TrafficCNN, self).__init__()
-        self.num_features = num_features
-        self.num_classes = num_classes
-        # Assuming num_features is the number of total dummy features after one-hot encoding
-        self.embedding = nn.Embedding(num_embeddings=num_features, embedding_dim=10)
-        
-        # CNN layers
-        self.conv1 = nn.Conv1d(in_channels=10, out_channels=16, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
-        
-        # Fully connected layers
-        self.fc1 = nn.Linear(32 * (num_features // 2), 120)
-        self.fc2 = nn.Linear(120, 84)
+        self.conv1 = nn.Conv1d(num_features, 16, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv1d(16, 32, kernel_size=3, stride=1, padding=1)
+        self.pool = nn.MaxPool1d(2, 2)
+        self.fc1 = nn.Linear(32 * 1, 32)  # Adjust the input features to match your data
+        self.fc2 = nn.Linear(32, 84)
         self.fc3 = nn.Linear(84, num_classes)
 
     def forward(self, x):
-        # Handle missing values in data
-        # Assuming missing values have been encoded as a specific number, e.g., -1
-        x = torch.where(x == -1, torch.zeros_like(x), x)
-        
-        # Embedding layer for one-hot encoded data
-        x = self.embedding(x.long()).transpose(1, 2)
-        
-        # CNN layers
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        
-        # Flatten the output for the fully connected layers
-        x = x.view(-1, 32 * (self.num_features // 2))
-        
-        # Fully connected layers
+        # Add sequence of convolutional and max pooling layers
+        x = F.relu(self.conv1(x))
+        # print("After conv1:", x.size())
+        x = F.relu(self.conv2(x))
+        # print("After conv2:", x.size())
+        x = x.view(-1, 32 * 1)  # Flatten the tensor
+        # print("After view:", x.size())
         x = F.relu(self.fc1(x))
+        # print("After fc1:", x.size())
         x = F.relu(self.fc2(x))
+        # print("After fc2:", x.size())
         x = self.fc3(x)
+        # print("After fc3:", x.size())
         return x
+
+class RNNClassifier(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, num_classes):
+        super(RNNClassifier, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, num_classes)
+
+    def forward(self, x):
+        # Initialize hidden and cell states
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        
+        # Forward propagate the RNN
+        out, _ = self.rnn(x, h0)
+        
+        # Pass the output of the last time step to the classifier
+        out = self.fc(out[:, -1, :])
+        return out
 
 
 def train_model(train_loader, valid_loader, model, criterion, optimizer, num_epochs=25):
-    for epoch in range(num_epochs):
+    for epoch in range(1):
         model.train()  # Set the model to training mode
         running_loss = 0.0
         
-        for i, (features, labels) in enumerate(train_loader, 0):
+        for i, (feature, label) in enumerate(train_loader):
             # Zero the parameter gradients
+            feature, label = feature.to(device), label.to(device)
+            feature = feature.unsqueeze(2)
+
             optimizer.zero_grad()
-            print(features)
-            # Forward pass
-            outputs = model(features)
-            print(outputs.shape)
-            print(labels.shape)
-            loss = criterion(outputs, labels)
+            outputs = model(feature)
+            print(outputs)
+            loss = criterion(outputs, label)
             
             # Backward pass and optimize
             loss.backward()
@@ -124,23 +170,31 @@ def train_model(train_loader, valid_loader, model, criterion, optimizer, num_epo
             
             # Print statistics
             running_loss += loss.item()
-            if i % 100 == 99:    # Print every 100 mini-batches
+            if i % 5 == 4:    # Print every 100 mini-batches
                 print(f'Epoch {epoch + 1}, Batch {i + 1}, Loss: {running_loss / 100:.4f}')
                 running_loss = 0.0
-        
-        # Validation loss
-        valid_loss = 0.0
-        valid_steps = 0
-        model.eval()  # Set the model to evaluation mode
-        with torch.no_grad():
-            for features, labels in valid_loader:
-                outputs = model(features)
-                loss = criterion(outputs, labels)
-                valid_loss += loss.item()
-                valid_steps += 1
-        print(f'Epoch {epoch + 1}, Validation Loss: {valid_loss / valid_steps:.4f}')
+
+    # Validation loss
+    correct = 0
+    total = 0
+    model.eval()  # Set the model to evaluation mode
+    with torch.no_grad():
+        for feature, label in valid_loader:
+            feature, label = feature.to(device), label.to(device)
+            feature = feature.unsqueeze(2)
+            outputs = model(feature)
+            print(outputs)
+            _, predicted = torch.max(outputs.data, 1)
+            total += label.size(0)
+            print(predicted)
+            correct += (predicted == label).sum().item()
+
+    print(f'Validation Accuracy: {100 * correct / total:.2f}%')
 
     print('Finished Training')
+        
+
+
 
 
 # Assuming 'data' is a dictionary of pandas DataFrames for 'train_set', 'test_set', and 'valid_set'
@@ -159,64 +213,44 @@ test_df = pd.read_csv(data_folder + "test_set.csv")
 # Read the valid_set.csv file
 valid_df = pd.read_csv(data_folder + "valid_set.csv")
 
-# train_data = {}
-# encoded_train_data = pd.DataFrame()
-# train_data, encoded_train_data = label_encode(train_df, feature_cols)
-
-# train_labels = {}
-# encoded_train_labels = pd.DataFrame()
-# train_labels, encoded_train_labels = label_encode(train_df, label_cols)
-
-train_data = {}
-encoded_train_data = pd.DataFrame()
-train_data, encoded_train_data = label_encode(test_df, feature_cols)
-
-train_labels = {}
-encoded_train_labels = pd.DataFrame()
-train_labels, encoded_train_labels = label_encode(test_df, label_cols)
-
-train_data = {}
-encoded_train_data = pd.DataFrame()
-train_data, encoded_train_data = label_encode(valid_df, feature_cols)
-
-train_labels = {}
-encoded_train_labels = pd.DataFrame()
-train_labels, encoded_train_labels = label_encode(valid_df, label_cols)
-
-print(train_labels, encoded_train_labels)
-
+train_data, features, labels = train_embedding(train_df, feature_cols, label_cols)
+test_data = test_embedding(test_df, features, labels)
+valid_data = test_embedding(valid_df, features, labels)
 
 
 # Create datasets
-train_dataset = TrafficDataset(train_df, feature_cols, label_cols)
-test_dataset = TrafficDataset(test_df, feature_cols, label_cols)
-valid_dataset = TrafficDataset(valid_df, feature_cols, label_cols)
-
-# print(train_dataset.features['TRAFFIC_CONTROL_DEVICE'])
+train_dataset = TrafficDataset(train_data, feature_cols, label_cols)
+test_dataset = TrafficDataset(test_data, feature_cols, label_cols)
+valid_dataset = TrafficDataset(valid_data, feature_cols, label_cols)
 
 
+# Create dataloaders
+batch_size = 8
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
+valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
 
-
-
-
-
-# # Create dataloaders
-# batch_size = 32
-# train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-# test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-# valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
-
-# # Number of features after one-hot encoding
-# num_features = train_dataset.features.shape[1] # You need to calculate this based on your one-hot encoded data
+# Number of features after one-hot encoding
+num_features = train_dataset.features.shape[1] # You need to calculate this based on your one-hot encoded data
 # # Number of classes for the classification task
-# num_classes = train_dataset.labels.shape[1] # You need to define this based on your label data
+num_classes = train_dataset.labels.shape[1] # You need to define this based on your label data
 
+    
 
-# # Instantiate the model
-# model = TrafficCNN(num_features, num_classes)
+# Instantiate the model
 
-# # Define loss function and optimizer
-# criterion = nn.CrossEntropyLoss()
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+model = TrafficCNN(num_features, num_classes).to(device)
 
-# train_model(train_loader, valid_loader, model, criterion, optimizer, num_epochs=25)
+# input_size = 6  # Number of features
+# hidden_size = 128  # Number of features in the hidden state
+# num_layers = 2  # Number of stacked RNN layers
+# num_classes = 4  # Number of output classes
+
+# # Initialize the model
+# model = RNNClassifier(input_size, hidden_size, num_layers, num_classes).cuda()
+
+# Define loss function and optimizer
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+
+train_model(train_loader, valid_loader, model, criterion, optimizer, num_epochs=25)

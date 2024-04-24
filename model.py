@@ -39,6 +39,7 @@ def encode_targets(df, label_encoders, target):
 feature_cols = ['TRAFFIC_CONTROL_DEVICE', 'WEATHER_CONDITION', 'LIGHTING_CONDITION', 'ROADWAY_SURFACE_COND', 'POSTED_SPEED_LIMIT', 'TRAFFICWAY_TYPE']
 label_cols = ['CRASH_TYPE', 'DAMAGE', 'MOST_SEVERE_INJURY', 'INJURIES_TOTAL']
 
+
 # Define the path to the data folder
 data_folder = "data/"
 
@@ -46,7 +47,7 @@ data_folder = "data/"
 train_df = pd.read_csv(data_folder + "train_set.csv")
 
 # Read the test_set.csv file
-test_df = pd.read_csv(data_folder + "test_set.csv")
+test_df = pd.read_csv(data_folder + "test_set - results - JY.csv")
 
 # Read the valid_set.csv file
 valid_df = pd.read_csv(data_folder + "valid_set.csv")

@@ -1,3 +1,9 @@
 .ipynb_checkpoints/*
 old_data/*
 previous/*
+
+bert_baseline/wandb
+bert_baseline/CRASH_TYPE_best_model.pth
+bert_baseline/DAMAGE_best_model.pth
+bert_baseline/INJURIES_TOTAL_best_model.pth
+bert_baseline/MOST_SEVERE_INJURY_best_model.pth

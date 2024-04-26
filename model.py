@@ -8,6 +8,9 @@ import torch.nn.functional as F
 import pandas as pd
 import numpy as np
 
+import matplotlib.pyplot as plt
+
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 np.random.seed(577)
 
@@ -84,10 +87,10 @@ num_classes = len(train_labels) # You need to define this based on your label da
 
 # print(train_labels['DAMAGE'].shape)
 
-model_CT = MLP(num_features, 64, train_labels['CRASH_TYPE'].shape[1], "logistic").to(device)
-model_D = MLP(num_features, 200, train_labels['DAMAGE'].shape[1], "logistic").to(device)
-model_MSI= MLP(num_features, 64, train_labels['MOST_SEVERE_INJURY'].shape[1], "logistic").to(device)
-model_IT = MLP(num_features, 64, train_labels['INJURIES_TOTAL'].shape[1], "relu").to(device)
+model_CT = MLP(num_features, 32, train_labels['CRASH_TYPE'].shape[1], "logistic").to(device)
+model_D = MLP(num_features, 64, train_labels['DAMAGE'].shape[1], "logistic").to(device)
+model_MSI= MLP(num_features, 32, train_labels['MOST_SEVERE_INJURY'].shape[1], "logistic").to(device)
+model_IT = MLP(num_features, 32, train_labels['INJURIES_TOTAL'].shape[1], "relu").to(device)
 
 # Define loss function and optimizer
 criterion_CT = nn.CrossEntropyLoss()
@@ -95,9 +98,46 @@ criterion_D  = nn.CrossEntropyLoss()
 criterion_MSI = nn.CrossEntropyLoss()
 criterion_IT = nn.CrossEntropyLoss()
 optimizer_CT = torch.optim.Adam(model_CT.parameters(), lr=0.001)
-optimizer_D = torch.optim.Adam(model_D.parameters(), lr=0.0001)
-optimizer_MSI = torch.optim.Adam(model_MSI.parameters(), lr=0.0001)
+optimizer_D = torch.optim.Adam(model_D.parameters(), lr=0.005)
+optimizer_MSI = torch.optim.Adam(model_MSI.parameters(), lr=0.001)
 optimizer_IT = torch.optim.Adam(model_IT.parameters(), lr=0.0001)
+
+# for ba in [16, 32, 64, 128, 256]:
+#     CT_t = []
+#     D_t = []
+#     MSI_t = []
+#     IT_t = []
+
+#     CT_v = []
+#     D_v = []
+#     MSI_v = []
+#     IT_v = []
+
+#     f1, axv1 = plt.subplots()
+#     f2, axv2 = plt.subplots()
+#     for lr in [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05]:
+#         model_CT = MLP(num_features, ba, train_labels['CRASH_TYPE'].shape[1], "logistic").to(device)
+#         model_D = MLP(num_features, ba, train_labels['DAMAGE'].shape[1], "logistic").to(device)
+#         model_MSI= MLP(num_features, ba, train_labels['MOST_SEVERE_INJURY'].shape[1], "logistic").to(device)
+#         model_IT = MLP(num_features, ba, train_labels['INJURIES_TOTAL'].shape[1], "relu").to(device)
+
+#         # Define loss function and optimizer
+#         criterion_CT = nn.CrossEntropyLoss()
+#         criterion_D  = nn.CrossEntropyLoss()
+#         criterion_MSI = nn.CrossEntropyLoss()
+#         criterion_IT = nn.CrossEntropyLoss()
+#         optimizer_CT = torch.optim.Adam(model_CT.parameters(), lr=lr)
+#         optimizer_D = torch.optim.Adam(model_D.parameters(), lr=lr)
+#         optimizer_MSI = torch.optim.Adam(model_MSI.parameters(), lr=lr)
+#         optimizer_IT = torch.optim.Adam(model_IT.parameters(), lr=lr)
+
+
+        # f = plt.figure("Train Loss")
+
+        # CT = []
+        # D = []
+        # MSI = []
+        # IT = []
 
 for epoch in range(10):
     for i in range(train_data.shape[0]):
@@ -135,6 +175,22 @@ for epoch in range(10):
             # print(f'Epoch [{epoch+1}/10], Loss: {loss_MSI.item()}')
             # print(f'Epoch [{epoch+1}/10], Loss: {loss_IT.item()}')
             # print("--------------- Line ---------------")
+            # CT.append(loss_CT.item())
+            # D.append(loss_D.item())
+            # MSI.append(loss_MSI.item())
+            # IT.append(loss_IT.item())
+
+        # plt.plot(np.arange(len(CT)), CT)
+        # plt.plot(np.arange(len(D)), D)
+        # plt.plot(np.arange(len(MSI)), MSI, label = "MOST_SEVERE_INJURY")
+        # plt.plot(np.arange(len(IT)), IT, label = "INJURIES_TOTAL")
+
+        # plt.title("Development of loss during training")
+        # plt.xlabel("Number of iterations")
+        # plt.ylabel("Loss")
+        # plt.legend(loc = "upper")
+        # name = "graphs/classification_loss.png"
+        # plt.savefig(name)
 
 model_CT.eval()
 model_D.eval()
@@ -184,6 +240,11 @@ with torch.no_grad():
 avg_loss = [tl / valid_data.shape[0] for tl in total_loss]
 accuracy = [c / valid_data.shape[0] for c in correct]
 
+        # CT_v.append(accuracy[0])
+        # D_v.append(accuracy[1])
+        # MSI_v.append(accuracy[2])
+        # IT_v.append(accuracy[3])
+
 print("Validation Loss and Accuracy: ")
 print(avg_loss)
 print(accuracy)
@@ -228,9 +289,45 @@ with torch.no_grad():
         correct[2] += (torch.argmax(predicted_MSI, dim=0) == torch.argmax(label_MSI, dim=0)).sum().item()
         correct[3] += (torch.argmax(predicted_IT, dim=0) == torch.argmax(label_IT, dim=0)).sum().item()
 
-avg_loss = [tl / test_data.shape[0] for tl in total_loss]
-accuracy = [c / test_data.shape[0] for c in correct]
+    avg_loss = [tl / test_data.shape[0] for tl in total_loss]
+    accuracy = [c / test_data.shape[0] for c in correct]
+
+            # CT_t.append(accuracy[0])
+            # D_t.append(accuracy[1])
+            # MSI_t.append(accuracy[2])
+            # IT_t.append(accuracy[3])
 
 print("Test Loss and Accuracy: ")
 print(avg_loss)
 print(accuracy)
+            # axv.set_title("Validation Accuracy for different Learning Rate with Iteration")
+
+    # axv1.scatter(np.arange(len(CT_v)), CT_v, label="CT_v")
+    # axv1.plot(np.arange(len(CT_v)), CT_v)
+    # axv1.scatter(np.arange(len(D_v)), D_v, label="D_v")
+    # axv1.plot(np.arange(len(D_v)), D_v)
+    # axv1.scatter(np.arange(len(MSI_v)), MSI_v, label="MSI_v")
+    # axv1.plot(np.arange(len(MSI_v)), MSI_v)
+    # axv1.scatter(np.arange(len(IT_v)), IT_v, label="IT_v")
+    # axv1.plot(np.arange(len(IT_v)), IT_v)
+    # axv1.set_xticklabels([0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05])
+
+    # axv2.scatter(np.arange(len(CT_t)), CT_t, label="CT_t")
+    # axv2.plot(np.arange(len(CT_t)), CT_t)
+    # axv2.scatter(np.arange(len(D_t)), D_t, label="D_t")
+    # axv2.plot(np.arange(len(D_t)), D_t)
+    # axv2.scatter(np.arange(len(MSI_t)), MSI_t, label="MSI_t")
+    # axv2.plot(np.arange(len(MSI_t)), MSI_t)
+    # axv2.scatter(np.arange(len(IT_t)), IT_t, label="IT_t")
+    # axv2.plot(np.arange(len(IT_t)), IT_t)
+    # axv2.set_xticklabels([0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05])
+
+    # axv1.set(xlabel = "Learning Rate", ylabel = "Validation Accuracy")
+    # name = "graphs/validation_" + str(lr) + "_" + str(ba) + ".png"
+    # f1.legend(loc = "lower right")
+    # f1.savefig(name)
+
+    # axv2.set(xlabel = "Learning Rate", ylabel = "Test Accuracy")
+    # name = "graphs/test_" + str(lr) + "_" + str(ba) + ".png"
+    # f2.legend(loc = "lower right")
+    # f2.savefig(name)
